@@ -1,0 +1,27 @@
+{
+  "name": "worker",
+  "version": "0.0.0",
+  "description": "FFmpeg worker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maulik-mk/mp.ii-worker.git"
+  },
+  "keywords": [
+    "ffmpeg",
+    "worker",
+    "video processing",
+    "video encoding",
+    "video decoding",
+    "video transcoding",
+    "video streaming",
+    "video processing worker",
+    "video processing worker",
+    "nodjs"
+  ],
+  "author": "Maulik MK",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/maulik-mk/mp.ii-worker/issues"
+  },
+  "homepage": "https://github.com/maulik-mk/mp.ii-worker#readme"
+}
