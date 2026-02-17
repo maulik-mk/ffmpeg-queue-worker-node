@@ -118,6 +118,7 @@ run_transcode_test() {
     log_info "Starting transcoding process (Memory Limit: ${CONTAINER_MEM_LIMIT})..."
     
     # Run FFmpeg in Docker
+    # First 10 seconds of the video only
     docker run --rm \
         --memory="${CONTAINER_MEM_LIMIT}" \
         --cpus="${CONTAINER_CPU_LIMIT}" \
@@ -132,7 +133,6 @@ run_transcode_test() {
         -filter_threads 1 \
         -vf "scale=1280:720" \
         -c:v libx264 -preset ultrafast -b:v 2800k \
-        # First 10 seconds of the video only
         -t 10 \
         -movflags +faststart \
         "/output/$(basename "${output_file}")"
