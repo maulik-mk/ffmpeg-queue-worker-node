@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "master"]
+  pull_request:
+    branches: [ "main", "master"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test (Ubuntu)
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1. Checkout the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Log in to GitHub Container Registry
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      # 3. Download a sample test video (1080p, ~2MB)
+      # Dynamically to keep the git repo small.
+      # The script expects 'video', so we simulate that structure.
+      - name: Download Test Asset
+        run: |
+          mkdir -p video
+          echo "Downloading sample video..."
+          # Using a reliable test video source (Big Buck Bunny stable link)
+          curl -L -o video/test.mp4 https://test-videos.co.uk/vids/bigbuckbunny/mp4/av1/1080/Big_Buck_Bunny_1080_10s_5MB.mp4
+          ls -lh video/
+
+      # 4. Run the Test Script
+      # Since ffmpeg.test.sh handles 'docker build', we just run it directly.
+      - name: Run Test Suite
+        run: |
+          chmod +x test/ffmpeg.test.sh
+          bash test/ffmpeg.test.sh
+
+      # 5. Push Image to GHCR (Only on Main)
+      - name: Push to GHCR
+        if: github.ref == 'refs/heads/main'
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository }}
+          # Change all uppercase to lowercase
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          
+          # Tag the image built by ffmpeg.test.sh with the proper GHCR name
+          docker tag worker-ffmpeg $IMAGE_ID:latest
+          docker tag worker-ffmpeg $IMAGE_ID:${{ github.sha }}
+          
+          echo "Pushing $IMAGE_ID:latest"
+          docker push $IMAGE_ID:latest
+          docker push $IMAGE_ID:${{ github.sha }}
