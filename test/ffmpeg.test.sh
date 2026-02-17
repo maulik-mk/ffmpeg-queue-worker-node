@@ -113,6 +113,7 @@ run_transcode_test() {
 
     # Prepare output directory
     mkdir -p "${OUTPUT_DIR}"
+    chmod 777 "${OUTPUT_DIR}"
     rm -f "${output_file}"
 
     log_info "Starting transcoding process (Memory Limit: ${CONTAINER_MEM_LIMIT})..."
@@ -159,6 +160,7 @@ run_hls_test() {
     local hls_root="${OUTPUT_DIR}/hls"
     rm -rf "${hls_root}"
     mkdir -p "${hls_root}"/{360p,720p,1080p}
+    chmod -R 777 "${hls_root}"
 
     # Define common options to reduce repetition
     local docker_opts="--rm --memory=${CONTAINER_MEM_LIMIT} --cpus=${CONTAINER_CPU_LIMIT} -v $(pwd)/${VIDEO_DIR}:/input:ro -v $(pwd)/${OUTPUT_DIR}/hls:/output"
