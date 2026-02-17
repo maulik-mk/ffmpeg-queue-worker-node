@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "master", 'dev']
+  pull_request:
+    branches: [ "main", "master", 'dev']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Test (Ubuntu)
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1. Checkout the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Setup Docker Buildx to enable advanced build features and caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build and cache Docker layers using GitHub Actions cache backend
+      # 'load: true' exports the image to the local Docker daemon for testing
+      - name: Build and Load Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: worker-ffmpeg:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Authenticate to GHCR for image publishing
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fetch reference test asset (1080p H.264)
+      # Dynamic download avoids repository bloat
+      - name: Download Test Asset
+        run: |
+          mkdir -p video
+          echo "Downloading sample video..."
+          # Source: Big Buck Bunny (Stable URL)
+          curl -L -o video/test.mp4 https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_5MB.mp4
+          ls -lh video/
+
+      # Execute integration test suite
+      # Patch script to skip redundant build step (using cached image)
+      - name: Run Test Suite
+        env:
+          SKIP_BUILD: 'true'
+        run: |
+          chmod +x test/ffmpeg.test.sh
+          bash test/ffmpeg.test.sh
+
+      # Publish artifact to GHCR (Production branch only)
+      - name: Push to GHCR
+        if: github.ref == 'refs/heads/main'
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository }}
+          # Normalize repository name to lowercase
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          
+          # Apply semantic tags (latest, SHA) for versioning
+          docker tag worker-ffmpeg:latest $IMAGE_ID:latest
+          docker tag worker-ffmpeg:latest $IMAGE_ID:${{ github.sha }}
+          
+          echo "Pushing $IMAGE_ID:latest"
+          docker push $IMAGE_ID:latest
+          docker push $IMAGE_ID:${{ github.sha }}
