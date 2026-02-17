@@ -113,6 +113,7 @@ run_transcode_test() {
 
     # Prepare output directory
     mkdir -p "${OUTPUT_DIR}"
+    chmod 777 "${OUTPUT_DIR}"
     rm -f "${output_file}"
 
     log_info "Starting transcoding process (Memory Limit: ${CONTAINER_MEM_LIMIT})..."
