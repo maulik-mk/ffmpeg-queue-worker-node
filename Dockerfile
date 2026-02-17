@@ -79,7 +79,7 @@ RUN ./configure \
     --disable-outdevs \
     \
     # ── Compiler Optimizations ── \
-    --extra-cflags="-O2 -march=armv8-a" \
+    --extra-cflags="-O2" \
     \
     && make -j$(nproc) \
     && make install \
