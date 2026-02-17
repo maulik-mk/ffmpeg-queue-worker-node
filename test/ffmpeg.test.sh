@@ -221,7 +221,13 @@ print_stats() {
 # Main Execution
 main() {
     check_prerequisites
-    build_image
+    
+    if [[ "${SKIP_BUILD:-false}" != "true" ]]; then
+        build_image
+    else
+        log_info "Skipping build step (SKIP_BUILD=true)..."
+    fi
+
     verify_ffmpeg_version
     verify_ffprobe_version
     verify_codecs
