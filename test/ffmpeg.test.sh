@@ -73,7 +73,7 @@ build_image() {
 verify_ffmpeg_version() {
     log_header "Step 2: Verifying FFmpeg Version"
     local output
-    output=$(docker run --rm "${IMAGE_NAME}" -version)
+    output=$(docker run --rm "${IMAGE_NAME}" ffmpeg -version)
     echo "$output" | head -n 1
 }
 
@@ -81,7 +81,7 @@ verify_ffmpeg_version() {
 verify_ffprobe_version() {
     log_header "Step 3: Verifying FFprobe Version"
     local output
-    output=$(docker run --rm --entrypoint ffprobe "${IMAGE_NAME}" -version)
+    output=$(docker run --rm "${IMAGE_NAME}" ffprobe -version)
     echo "$output" | head -n 1
 }
 
@@ -91,7 +91,7 @@ verify_codecs() {
     log_info "Checking for required libraries: libx264 (H.264) and libfdk_aac (AAC)..."
     
     local codecs
-    if codecs=$(docker run --rm "${IMAGE_NAME}" -codecs 2>/dev/null | grep -E "libx264|libfdk_aac"); then
+    if codecs=$(docker run --rm "${IMAGE_NAME}" ffmpeg -codecs 2>/dev/null | grep -E "libx264|libfdk_aac"); then
         echo "$codecs"
         log_success "Required codecs verified successfully."
     else
@@ -126,7 +126,7 @@ run_transcode_test() {
         -v "$(pwd)/${VIDEO_DIR}:/input:ro" \
         -v "$(pwd)/${OUTPUT_DIR}:/output" \
         "${IMAGE_NAME}" \
-        -y \
+        ffmpeg -y \
         -hide_banner -loglevel error \
         -stats \
         -i "/input/${TEST_VIDEO_FILE}" \
@@ -169,21 +169,21 @@ run_hls_test() {
 
     # Pass 1: 360p
     log_info "Generating 360p HLS stream segment..."
-    docker run ${docker_opts} "${IMAGE_NAME}" ${ffmpeg_opts} \
+    docker run ${docker_opts} "${IMAGE_NAME}" ffmpeg ${ffmpeg_opts} \
         -i "/input/${TEST_VIDEO_FILE}" -t 10 \
         -vf "scale=640:360" -c:v libx264 -preset ultrafast -b:v 800k \
         ${hls_flags} -hls_segment_filename '/output/360p/segment_%03d.ts' -y '/output/360p/stream.m3u8'
 
     # Pass 2: 720p
     log_info "Generating 720p HLS stream segment..."
-    docker run ${docker_opts} "${IMAGE_NAME}" ${ffmpeg_opts} \
+    docker run ${docker_opts} "${IMAGE_NAME}" ffmpeg ${ffmpeg_opts} \
         -i "/input/${TEST_VIDEO_FILE}" -t 10 \
         -vf "scale=1280:720" -c:v libx264 -preset ultrafast -b:v 2800k \
         ${hls_flags} -hls_segment_filename '/output/720p/segment_%03d.ts' -y '/output/720p/stream.m3u8'
 
     # Pass 3: 1080p
     log_info "Generating 1080p HLS stream segment..."
-    docker run ${docker_opts} "${IMAGE_NAME}" ${ffmpeg_opts} \
+    docker run ${docker_opts} "${IMAGE_NAME}" ffmpeg ${ffmpeg_opts} \
         -i "/input/${TEST_VIDEO_FILE}" -t 10 \
         -vf "scale=1920:1080" -c:v libx264 -preset ultrafast -b:v 5000k \
         ${hls_flags} -hls_segment_filename '/output/1080p/segment_%03d.ts' -y '/output/1080p/stream.m3u8'
