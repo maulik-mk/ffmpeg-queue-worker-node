@@ -104,11 +104,11 @@ jobs:
 
       # 9. Download Test Asset
       - name: Download Test Asset
-        run: ./scripts/download_test_video.sh
+        run: .github/scripts/download_test_video.sh
 
       # 10. Run Test Suite
       - name: Run Test Suite
-        run: ./scripts/run_tests.sh
+        run: .github/scripts/run_tests.sh
 
       # 11. Push Docker image to GHCR (only if new VERSION)
       - name: Push to GHCR
