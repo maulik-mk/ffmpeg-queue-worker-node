@@ -1,27 +1,44 @@
 {
   "name": "worker",
-  "version": "0.1.0",
-  "description": "FFmpeg worker",
+  "version": "0.2.0",
+  "description": "FFmpeg Worker Service (TypeScript)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/maulik-mk/mp.ii-worker.git"
+    "url": "git+https://github.com/maulik-mk/ffmpeg-queue-worker-node.git"
   },
-  "keywords": [
-    "ffmpeg",
-    "worker",
-    "video processing",
-    "video encoding",
-    "video decoding",
-    "video transcoding",
-    "video streaming",
-    "video processing worker",
-    "video processing worker",
-    "nodjs"
-  ],
-  "author": "Maulik MK",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/maulik-mk/mp.ii-worker/issues"
+  "main": "dist/server.js",
+  "type": "module",
+  "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be",
+  "scripts": {
+    "build": "rm -rf dist && tsc && find src -name '*.json' | while read f; do mkdir -p dist/$(dirname ${f#src/}) && cp $f dist/${f#src/}; done",
+    "dev:local:format": "prettier --write \"src/**/*.{ts,json}\"",
+    "dev:local:build:docker": "docker build -t worker-local-dev .",
+    "dev:local:test:job": "tsx --env-file=.env test/queue-job.test.local.ts",
+    "dev:local:run:docker": "docker run --env-file .env worker-local-dev",
+    "dev:local:e2e": "pnpm run dev:local:format && pnpm run dev:local:build:docker && pnpm run dev:local:test:job && pnpm run dev:local:run:docker"
   },
-  "homepage": "https://github.com/maulik-mk/mp.ii-worker#readme"
+  "dependencies": {
+    "@azure/identity": "^4.13.1",
+    "@azure/storage-blob": "^12.31.0",
+    "@fastify/cors": "9.0.1",
+    "@fastify/helmet": "11.1.1",
+    "@fastify/rate-limit": "9.1.0",
+    "bullmq": "^5.0.0",
+    "fastify": "^4.26.0",
+    "glob": "^11.0.0",
+    "pg": "^8.13.0",
+    "pino": "^8.19.0",
+    "uuid": "^13.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/pg": "^8.11.0",
+    "prettier": "^3.2.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
 }
