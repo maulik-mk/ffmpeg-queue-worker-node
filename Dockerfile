@@ -170,7 +170,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # -----------------------------------------------------------------------------
 # Metadata & OCI Labels
 # -----------------------------------------------------------------------------
-ARG VERSION=0.1.0
+ARG VERSION=0.2.0
 ARG BUILD_DATE=unknown
 
 LABEL org.opencontainers.image.title="ffmpeg-queue-worker-node" \
