@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ "main", "master", 'dev']
+    branches: [ "main", "master", "dev" ]
   pull_request:
-    branches: [ "main", "master", 'dev']
+    branches: [ "main", "master", "dev" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,60 +24,106 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Setup Docker Buildx to enable advanced build features and caching
+      # 2. Extract Dockerfile VERSION
+      - name: Read Dockerfile VERSION
+        id: docker_version
+        run: |
+          VERSION=$(grep -E '^ARG VERSION=' Dockerfile | cut -d '=' -f2 | tr -d '"')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Found Dockerfile VERSION=$VERSION"
+          if [[ "$VERSION" =~ \.0$ ]]; then
+            echo "IS_MAJOR_MINOR=true" >> $GITHUB_ENV
+          else
+            echo "IS_MAJOR_MINOR=false" >> $GITHUB_ENV
+          fi
+
+      # 3. Set Build Date
+      - name: Set Build Date
+        if: github.ref == 'refs/heads/main'
+        run: |
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+          echo "Build date: $BUILD_DATE"
+
+      # 4. Extract all labels from Dockerfile
+      - name: Extract Dockerfile Labels
+        id: docker_labels
+        run: |
+          echo "Extracting labels from Dockerfile..."
+          # Remove leading LABEL and combine into single line (multi-line support)
+          LABELS=$(grep '^LABEL ' Dockerfile | sed 's/^LABEL //' | tr '\n' ' ')
+          # Replace ARG placeholders with ENV values
+          LABELS="${LABELS//\${VERSION}/${{ env.VERSION }}}"
+          LABELS="${LABELS//\${BUILD_DATE}/${{ env.BUILD_DATE }}}"
+          echo "DOCKER_LABELS=$LABELS" >> $GITHUB_ENV
+          echo "Extracted labels: $LABELS"
+
+      # 5. Check if Docker image VERSION exists in GHCR
+      - name: Check if Docker image VERSION exists
+        if: github.ref == 'refs/heads/main' && env.IS_MAJOR_MINOR == 'true'
+        id: check_version
+        run: |
+          EXISTING_TAG=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://ghcr.io/v2/${{ github.repository }}/tags/list" | jq -r '.tags[]?' | grep "^${{ env.VERSION }}$" || true)
+          echo "EXISTING_TAG=$EXISTING_TAG" >> $GITHUB_ENV
+          if [ "$EXISTING_TAG" = "${{ env.VERSION }}" ]; then
+            echo "Docker image VERSION=${{ env.VERSION }} already exists. Skipping build/push."
+          else
+            echo "Docker image VERSION=${{ env.VERSION }} is new. Will build/push."
+          fi
+
+      # 6. Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Build and cache Docker layers using GitHub Actions cache backend
-      # 'load: true' exports the image to the local Docker daemon for testing
+      # 7. Build Docker image (only if new VERSION)
       - name: Build and Load Docker Image
+        if: github.ref == 'refs/heads/main' && env.EXISTING_TAG == '' && env.IS_MAJOR_MINOR == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
           load: true
-          tags: worker-ffmpeg:latest
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
+          labels: ${{ env.DOCKER_LABELS }}
+          tags: |
+            worker-ffmpeg:${{ env.VERSION }}
+            worker-ffmpeg:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Authenticate to GHCR for image publishing
+      # 8. Log in to GHCR
       - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/main' && env.EXISTING_TAG == '' && env.IS_MAJOR_MINOR == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Fetch reference test asset (1080p H.264)
-      # Dynamic download avoids repository bloat
+      # 9. Download Test Asset
       - name: Download Test Asset
-        run: |
-          mkdir -p video
-          echo "Downloading sample video..."
-          # Source: Big Buck Bunny (Stable URL)
-          curl -L -o video/test.mp4 https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_5MB.mp4
-          ls -lh video/
+        run: ./scripts/download_test_video.sh
 
-      # Execute integration test suite
-      # Patch script to skip redundant build step (using cached image)
+      # 10. Run Test Suite
       - name: Run Test Suite
-        env:
-          SKIP_BUILD: 'true'
-        run: |
-          chmod +x test/ffmpeg.test.sh
-          bash test/ffmpeg.test.sh
+        run: ./scripts/run_tests.sh
 
-      # Publish artifact to GHCR (Production branch only)
+      # 11. Push Docker image to GHCR (only if new VERSION)
       - name: Push to GHCR
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && env.EXISTING_TAG == '' && env.IS_MAJOR_MINOR == 'true'
         run: |
           IMAGE_ID=ghcr.io/${{ github.repository }}
-          # Normalize repository name to lowercase
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
-          
-          # Apply semantic tags (latest, SHA) for versioning
+
+          # Tag images
+          docker tag worker-ffmpeg:${{ env.VERSION }} $IMAGE_ID:${{ env.VERSION }}
           docker tag worker-ffmpeg:latest $IMAGE_ID:latest
           docker tag worker-ffmpeg:latest $IMAGE_ID:${{ github.sha }}
-          
-          echo "Pushing $IMAGE_ID:latest"
+
+          # Push images
+          echo "Pushing $IMAGE_ID:${{ env.VERSION }}"
+          docker push $IMAGE_ID:${{ env.VERSION }}
           docker push $IMAGE_ID:latest
           docker push $IMAGE_ID:${{ github.sha }}
