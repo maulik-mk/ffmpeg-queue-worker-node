@@ -156,9 +156,9 @@ async function main() {
     const connectionString = env.databaseUrl;
     const pool = new pg.default.Pool({
         connectionString,
-        ssl: {
-            rejectUnauthorized: false
-        }
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
     });
 
     try {
