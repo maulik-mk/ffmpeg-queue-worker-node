@@ -36,6 +36,7 @@ const envSchema = z.object({
    ),
    CORS_ORIGIN: unquotedString.default('*'),
    DATABASE_URL: unquotedString.pipe(z.string().min(1, 'DATABASE_URL is required')),
+   DOMAIN_SUBDOMAIN_NAME: unquotedString.pipe(z.string().url()).optional(),
 });
 
 /**
