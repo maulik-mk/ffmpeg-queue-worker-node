@@ -23,9 +23,9 @@ export class PostgresVideoRepository implements VideoRepository {
    constructor(connectionString: string) {
       this.pool = new pg.Pool({
          connectionString,
-         ssl: {
-            rejectUnauthorized: false,
-         },
+         max: 20,
+         idleTimeoutMillis: 30000,
+         connectionTimeoutMillis: 5000,
       });
    }
 
