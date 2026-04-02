@@ -19,6 +19,7 @@ const envSchema = z.object({
    WORKER_CONCURRENCY: z.coerce.number().default(1),
 
    TEST_DURATION_SECONDS: z.coerce.number().optional(),
+   TEST_VIDEO_PROFILE: z.enum(['avc_sdr', 'hvc_sdr', 'hvc_pq', 'dvh_pq', 'ALL']).default('ALL'),
    HLS_OUTPUT_MODE: unquotedString.pipe(z.enum(['SINGLE_FILE', 'SEGMENTED'])).default('SEGMENTED'),
 
    JOB_LOCK_DURATION_MS: z.coerce.number().default(120000),
