@@ -39,6 +39,7 @@ export async function probe(sourceUrl: string): Promise<ProbeResult> {
 
       return {
          index: arrayIndex,
+         codec: s.codec_name || 'aac',
          language: lang.toLowerCase().slice(0, 3),
          channels: s.channels ?? 2,
          title: title,
@@ -46,7 +47,13 @@ export async function probe(sourceUrl: string): Promise<ProbeResult> {
    });
 
    if (audioStreams.length === 0) {
-      audioStreams.push({ index: -1, language: 'und', channels: 2, title: 'Track 1' });
+      audioStreams.push({
+         index: -1,
+         codec: 'aac',
+         language: 'und',
+         channels: 2,
+         title: 'Track 1',
+      });
    }
 
    let videoRange = 'SDR';
