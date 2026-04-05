@@ -19,11 +19,13 @@ const envSchema = z.object({
    WORKER_CONCURRENCY: z.coerce.number().default(1),
 
    TEST_DURATION_SECONDS: z.coerce.number().optional(),
-   TEST_VIDEO_PROFILE: z.enum(['avc_sdr', 'hvc_sdr', 'hvc_pq', 'dvh_pq', 'ALL']).default('ALL'),
+   TEST_VIDEO_PROFILE: unquotedString
+      .pipe(z.enum(['avc_sdr', 'hvc_sdr', 'hvc_pq', 'dvh_pq', 'ALL']))
+      .default('ALL'),
    HLS_OUTPUT_MODE: unquotedString.pipe(z.enum(['SINGLE_FILE', 'SEGMENTED'])).default('SEGMENTED'),
 
-   JOB_LOCK_DURATION_MS: z.coerce.number().default(120000),
-   JOB_LOCK_RENEW_MS: z.coerce.number().default(30000),
+   JOB_LOCK_DURATION_MS: z.coerce.number().default(1800000),
+   JOB_LOCK_RENEW_MS: z.coerce.number().default(15000),
 
    AZURE_UPLOAD_BATCH_SIZE: z.coerce.number().default(20),
    AZURE_UPLOAD_RETRIES: z.coerce.number().default(3),
@@ -37,7 +39,11 @@ const envSchema = z.object({
    ),
    CORS_ORIGIN: unquotedString.default('*'),
    DATABASE_URL: unquotedString.pipe(z.string().min(1, 'DATABASE_URL is required')),
-   DOMAIN_SUBDOMAIN_NAME: unquotedString.pipe(z.string().url()).optional(),
+   DOMAIN_SUBDOMAIN_NAME: unquotedString.optional(),
+
+   FFMPEG_THREADS: z.coerce.number().default(0),
+   X265_POOL_SIZE: z.coerce.number().default(32),
+   X265_FRAME_THREADS: z.coerce.number().default(4),
 });
 
 /**

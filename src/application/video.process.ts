@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type {
    JobData,
    ProcessVideoUseCase,
@@ -12,11 +16,7 @@ import { pino } from 'pino';
 const logger = pino({ name: 'ProcessVideo' });
 
 /**
- * Orchestrates the core video processing pipeline: Probe -> Transcode -> Upload.
- *
- * @remarks
- * - Idempotency: If a job fails midway, retrying it will safely overwrite existing partial state.
- * - Cleanup: Guaranteed to remove local intermediate files on both success and failure pathways.
+ * Orchestrates the core video processing pipeline: Download -> Probe -> Transcode -> Upload.
  */
 export class ProcessVideo implements ProcessVideoUseCase {
    constructor(
@@ -25,13 +25,6 @@ export class ProcessVideo implements ProcessVideoUseCase {
       private readonly db: VideoRepository,
    ) {}
 
-   /**
-    * Executes the transcoding pipeline and synchronizes state with the database and webhook.
-    *
-    * @param job - Job payload from BullMQ. `videoId` acts as the idempotency key in DB/Storage.
-    * @throws {WorkerError} If any step fails. Process catches this, cleans up, and rethrows
-    *                       so the BullMQ wrapper can handle the retry/failure logic based on `.retryable`.
-    */
    async execute(job: JobData, onProgress?: ProgressCallback): Promise<void> {
       const { videoId, sourceUrl, webhookUrl } = job;
       logger.info({ videoId, sourceUrl, webhookUrl }, 'Starting video processing pipeline');
@@ -39,15 +32,41 @@ export class ProcessVideo implements ProcessVideoUseCase {
       await this.db.updateStatus(videoId, 'processing');
 
       try {
-         logger.info({ videoId }, 'Step 1/3: Probing source');
-         const probeResult = await this.ffmpeg.probe(sourceUrl);
+         const parsedUrl = new URL(sourceUrl);
+         const extension = path.extname(parsedUrl.pathname);
 
+         logger.info({ videoId, extension }, 'Step 0/3: Downloading source video locally');
+
+         const workDir = `/tmp/worker/${videoId}`;
+         await fs.promises.mkdir(workDir, { recursive: true });
+
+         const localSourcePath = path.join(workDir, `source${extension}`);
+
+         const response = await fetch(sourceUrl);
+         if (!response.ok) {
+            throw new Error(
+               `Failed to download source video: ${response.status} ${response.statusText}`,
+            );
+         }
+         if (!response.body) {
+            throw new Error('Response body from source video is empty');
+         }
+
+         await pipeline(
+            Readable.fromWeb(response.body as any),
+            fs.createWriteStream(localSourcePath),
+         );
+         logger.info({ videoId }, 'Source video successfully downloaded to worker disk');
+
+         logger.info({ videoId }, 'Step 1/3: Probing source');
+         const probeResult = await this.ffmpeg.probe(localSourcePath);
          await this.db.updateStatus(videoId, 'processing');
          logger.info(
             {
                videoId,
                duration: probeResult.duration,
                resolution: `${probeResult.width}x${probeResult.height}`,
+               format: extension,
             },
             'Probe complete',
          );
@@ -58,7 +77,7 @@ export class ProcessVideo implements ProcessVideoUseCase {
          await this.db.updateStatus(videoId, 'transcoding');
 
          const { outputDir, renditions } = await this.ffmpeg.transcodeHLS(
-            sourceUrl,
+            localSourcePath,
             videoId,
             probeResult.width,
             probeResult.height,

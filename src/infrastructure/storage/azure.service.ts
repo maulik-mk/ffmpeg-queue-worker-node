@@ -5,6 +5,7 @@ import { DefaultAzureCredential } from '@azure/identity';
 import { pino } from 'pino';
 import { config } from '../../config/env.js';
 import type { ProgressCallback } from '../../domain/job.interface.js';
+import { HLS_CONSTANTS } from '../ffmpeg/constants.js';
 
 const logger = pino({ name: 'AzureStorage' });
 
@@ -67,43 +68,80 @@ export class AzureStorageService {
       let uploadedCount = 0;
       let masterPlaylistUrl = '';
 
-      for (const filePath of files) {
-         const relativeToHlsDir = path.relative(folderPath, filePath).replace(/\\/g, '/');
-         let blobPath = '';
+      let currentIndex = 0;
+      const totalFiles = files.length;
 
-         if (relativeToHlsDir === 'playlist.m3u8') {
-            blobPath = `${this.envDirectory}/${videoId}/playlist.m3u8`;
-         } else if (relativeToHlsDir.startsWith('v1/')) {
-            blobPath = `${this.envDirectory}/${relativeToHlsDir}`;
-         } else {
-            blobPath = `${this.envDirectory}/${videoId}/${relativeToHlsDir}`;
+      const uploadWorker = async () => {
+         while (currentIndex < totalFiles) {
+            const fileIndex = currentIndex++;
+            const filePath = files[fileIndex];
+
+            const relativeToHlsDir = path.relative(folderPath, filePath).replace(/\\/g, '/');
+            let blobPath = '';
+
+            if (relativeToHlsDir === HLS_CONSTANTS.MASTER_PLAYLIST_NAME) {
+               blobPath = `${this.envDirectory}/${videoId}/${HLS_CONSTANTS.MASTER_PLAYLIST_NAME}`;
+            } else if (relativeToHlsDir.startsWith('v1/')) {
+               blobPath = `${this.envDirectory}/${relativeToHlsDir}`;
+            } else {
+               blobPath = `${this.envDirectory}/${videoId}/${relativeToHlsDir}`;
+            }
+
+            const blockBlobClient = containerClient.getBlockBlobClient(blobPath);
+            let contentType = 'application/octet-stream';
+
+            if (filePath.endsWith('.m3u8')) {
+               contentType = 'application/vnd.apple.mpegurl';
+            } else if (filePath.endsWith('.m4s')) {
+               contentType = 'application/octet-stream';
+            } else if (filePath.endsWith('.mp4')) {
+               contentType = 'video/mp4';
+            }
+
+            let attempts = 0;
+            const maxRetries = config.AZURE_UPLOAD_RETRIES;
+            let success = false;
+
+            while (attempts < maxRetries && !success) {
+               try {
+                  attempts++;
+                  await blockBlobClient.uploadFile(filePath, {
+                     blobHTTPHeaders: {
+                        blobContentType: contentType,
+                     },
+                  });
+                  success = true;
+               } catch (error) {
+                  if (attempts >= maxRetries) {
+                     logger.error(
+                        { videoId, filePath, attempts },
+                        'Failed to upload Blob file after max retries',
+                     );
+                     throw error;
+                  }
+                  await new Promise((res) => setTimeout(res, 1000 * attempts));
+               }
+            }
+
+            if (relativeToHlsDir === HLS_CONSTANTS.MASTER_PLAYLIST_NAME) {
+               masterPlaylistUrl = blockBlobClient.url;
+            }
+
+            uploadedCount++;
+            if (onProgress) {
+               const percent = Math.round((uploadedCount / totalFiles) * 100);
+               const prevPercent = Math.round(((uploadedCount - 1) / totalFiles) * 100);
+               if (percent > prevPercent) {
+                  onProgress({ variant: 'Azure Upload', percent });
+               }
+            }
          }
+      };
 
-         const blockBlobClient = containerClient.getBlockBlobClient(blobPath);
-         let contentType = 'application/octet-stream';
+      const concurrency = Math.min(config.AZURE_UPLOAD_BATCH_SIZE, totalFiles);
+      const workers = Array.from({ length: concurrency }).map(() => uploadWorker());
 
-         if (filePath.endsWith('.m3u8')) {
-            contentType = 'application/vnd.apple.mpegurl';
-         } else if (filePath.endsWith('.m4s') || filePath.endsWith('.mp4')) {
-            contentType = 'video/mp4';
-         }
-
-         const fileBuffer = await fs.readFile(filePath);
-         await blockBlobClient.uploadData(fileBuffer, {
-            blobHTTPHeaders: {
-               blobContentType: contentType,
-            },
-         });
-
-         if (relativeToHlsDir === 'playlist.m3u8') {
-            masterPlaylistUrl = blockBlobClient.url;
-         }
-
-         uploadedCount++;
-         if (onProgress) {
-            onProgress({ variant: 'Azure Upload', percent: (uploadedCount / files.length) * 100 });
-         }
-      }
+      await Promise.all(workers);
 
       logger.info({ videoId, uploadedFiles: uploadedCount }, 'Azure upload complete');
       return masterPlaylistUrl;

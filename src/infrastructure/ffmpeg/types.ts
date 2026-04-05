@@ -1,6 +1,7 @@
 import type { ProgressCallback } from '../../domain/job.interface.js';
 
 export interface VideoProfile {
+   tierNumber?: number;
    name: string;
    width: number;
    height: number;
@@ -15,16 +16,20 @@ export interface VideoProfile {
    preset: string;
    profile?: string;
    level?: string;
+   crf?: number;
 }
 
 export interface AudioProfile {
    name: string;
+   groupId?: string;
    channels: number;
    codec: string;
    profile?: string;
    bitrate: number;
    sampleRate: number;
    hardwareProfile: boolean;
+   isAtmos?: boolean;
+   isCinemaMaster?: boolean;
 }
 
 export type VideoVariantMeta = VideoProfile & {
@@ -34,7 +39,9 @@ export type VideoVariantMeta = VideoProfile & {
 };
 
 export type AudioVariantMeta = AudioProfile & {
+   groupId?: string;
    sourceChannels: number;
+   sourceCodec?: string;
    language: string;
    streamIndex: number;
    title: string;

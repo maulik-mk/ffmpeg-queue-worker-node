@@ -7,6 +7,7 @@ export interface JobData {
 
 export interface AudioStreamInfo {
    index: number;
+   codec: string;
    language: string;
    channels: number;
    title: string;
