@@ -1,30 +1,66 @@
 import { createRequire } from 'node:module';
+import { config } from '../../../config/env.js';
 import type { VideoProfile, AudioProfile, VideoVariantMeta, AudioVariantMeta } from '../types.js';
 import type { AudioStreamInfo } from '../../../domain/job.interface.js';
 
 const require = createRequire(import.meta.url);
-const videoConfig = require('./profiles/video.json') as Record<string, VideoProfile[]>;
-const audioConfig = require('./profiles/audio.json') as AudioProfile[];
+
+const ABR_VIDEO = {
+   avc_sdr: (require('./ABR/video/avc.sdr.json') as VideoProfile[]).map((v, i) => ({
+      ...v,
+      tierNumber: i + 1,
+   })),
+   hvc_sdr: (require('./ABR/video/hvc.sdr.json') as VideoProfile[]).map((v, i) => ({
+      ...v,
+      tierNumber: i + 1,
+   })),
+   hvc_pq: (require('./ABR/video/hvc.pq.json') as VideoProfile[]).map((v, i) => ({
+      ...v,
+      tierNumber: i + 1,
+   })),
+   dvh_pq: (require('./ABR/video/dvh.pq.json') as VideoProfile[]).map((v, i) => ({
+      ...v,
+      tierNumber: i + 1,
+   })),
+};
+
+const cleanDomain = config.DOMAIN_SUBDOMAIN_NAME?.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
+const ABR_AUDIO = (require('./ABR/audio/audio.json') as AudioProfile[]).map((a) => ({
+   ...a,
+   groupId: cleanDomain ? `${a.name}-${cleanDomain}` : a.name,
+   name: a.name,
+}));
 
 const VIDEO_PROFILES: VideoProfile[] = [
-   ...(videoConfig.h264_sdr || []),
-   ...(videoConfig.h265_sdr || []),
-   ...(videoConfig.h265_hdr || []),
+   ...ABR_VIDEO.avc_sdr,
+   ...ABR_VIDEO.hvc_sdr,
+   ...ABR_VIDEO.hvc_pq,
+   ...ABR_VIDEO.dvh_pq,
 ];
 
-const AUDIO_PROFILES: AudioProfile[] = audioConfig;
+const AUDIO_PROFILES: AudioProfile[] = ABR_AUDIO;
 
 export function filterActiveVideoProfiles(
    sourceWidth: number,
    sourceHeight: number,
    videoRange: string = 'SDR',
 ): VideoProfile[] {
-   const isVertical = sourceHeight > sourceWidth;
+   let compatibleProfiles: VideoProfile[] = [];
 
-   let compatibleProfiles = VIDEO_PROFILES;
-   if (videoRange === 'SDR') {
-      compatibleProfiles = VIDEO_PROFILES.filter((p) => !p.name.includes('hdr'));
+   // Developer Override: Force a specific profile group for testing
+   if (config.TEST_VIDEO_PROFILE && config.TEST_VIDEO_PROFILE !== 'ALL') {
+      const forcedKey = config.TEST_VIDEO_PROFILE as keyof typeof ABR_VIDEO;
+      compatibleProfiles = [...ABR_VIDEO[forcedKey]];
+   } else if (videoRange === 'SDR') {
+      compatibleProfiles = [...ABR_VIDEO.avc_sdr, ...ABR_VIDEO.hvc_sdr];
+   } else if (videoRange === 'PQ' || videoRange === 'HLG') {
+      compatibleProfiles = [...ABR_VIDEO.hvc_pq, ...ABR_VIDEO.dvh_pq];
+   } else {
+      compatibleProfiles = VIDEO_PROFILES;
    }
+
+   const isVertical = sourceHeight > sourceWidth;
 
    const active = compatibleProfiles.filter((v) => {
       const standardWidth = Math.round((v.height * 16) / 9);
@@ -36,7 +72,7 @@ export function filterActiveVideoProfiles(
    });
 
    if (active.length === 0) {
-      active.push(compatibleProfiles[0] || VIDEO_PROFILES[0]);
+      active.push(compatibleProfiles[0] || ABR_VIDEO.avc_sdr[0]);
    }
 
    return active;
@@ -49,28 +85,56 @@ export function computeVideoMetadata(
    complexityMultiplier: number = 1.0,
 ): Omit<VideoVariantMeta, 'relativeUrl'>[] {
    const activeProfiles = profiles;
-
-   const isVertical = sourceHeight > sourceWidth;
+   const sourceArea = sourceWidth * sourceHeight;
+   const sourceAspectRatio = sourceWidth / sourceHeight;
 
    return activeProfiles.map((profile) => {
       const standardWidth = Math.round((profile.height * 16) / 9);
-      let maxBoxWidth = standardWidth;
-      let maxBoxHeight = profile.height;
+      const targetArea = standardWidth * profile.height;
 
-      if (isVertical) {
-         maxBoxWidth = profile.height;
-         maxBoxHeight = standardWidth;
+      let scale = Math.sqrt(targetArea / sourceArea);
+      scale = Math.min(scale, 1.0);
+
+      let maxWidthLimit = Infinity;
+      let maxHeightLimit = Infinity;
+
+      if (standardWidth >= 1920) {
+         maxWidthLimit = standardWidth;
+         maxHeightLimit = profile.height;
+      } else if (standardWidth <= 864) {
+         maxWidthLimit = 864;
+         maxHeightLimit = 486;
+      } else {
+         maxWidthLimit = standardWidth * 1.25;
+         maxHeightLimit = profile.height * 1.25;
       }
 
-      const scaleWidth = maxBoxWidth / sourceWidth;
-      const scaleHeight = maxBoxHeight / sourceHeight;
-      const scale = Math.min(scaleWidth, scaleHeight, 1.0);
+      if (sourceHeight > sourceWidth) {
+         const temp = maxWidthLimit;
+         maxWidthLimit = maxHeightLimit;
+         maxHeightLimit = temp;
+      }
 
-      const outWidth = sourceWidth * scale;
-      const outHeight = sourceHeight * scale;
+      if (sourceWidth * scale > maxWidthLimit) {
+         scale = maxWidthLimit / sourceWidth;
+      }
+      if (sourceHeight * scale > maxHeightLimit) {
+         scale = maxHeightLimit / sourceHeight;
+      }
 
-      const actualWidth = Math.round(outWidth / 2) * 2;
-      const actualHeight = Math.round(outHeight / 2) * 2;
+      let exactWidth, exactHeight, actualWidth, actualHeight;
+
+      if (sourceWidth >= sourceHeight) {
+         exactHeight = sourceHeight * scale;
+         actualHeight = Math.floor(exactHeight / 2) * 2;
+         exactWidth = actualHeight * sourceAspectRatio;
+         actualWidth = Math.round(exactWidth / 2) * 2;
+      } else {
+         exactWidth = sourceWidth * scale;
+         actualWidth = Math.floor(exactWidth / 2) * 2;
+         exactHeight = actualWidth / sourceAspectRatio;
+         actualHeight = Math.round(exactHeight / 2) * 2;
+      }
 
       const dynamicMaxrate = Math.round(profile.maxrate * complexityMultiplier);
       const dynamicBufsize = Math.round(profile.bufsize * complexityMultiplier);
@@ -89,19 +153,31 @@ export function computeVideoMetadata(
 
 export function computeAudioMetadata(
    sourceAudioStreams: AudioStreamInfo[] = [],
-): Omit<AudioVariantMeta, 'relativeUrl'>[] {
-   const renditions: Omit<AudioVariantMeta, 'relativeUrl'>[] = [];
+): AudioVariantMeta[] {
+   const renditions: AudioVariantMeta[] = [];
 
    for (const stream of sourceAudioStreams) {
       for (const profile of AUDIO_PROFILES) {
          if (profile.hardwareProfile && stream.channels < 2) continue;
 
+         const isAtmosSource =
+            stream.codec === 'eac3' ||
+            stream.codec === 'dca' ||
+            stream.codec === 'dts' ||
+            stream.codec === 'truehd';
+
+         if (profile.isAtmos && !isAtmosSource) continue;
+
          renditions.push({
             ...profile,
+            groupId: profile.groupId,
             sourceChannels: stream.channels,
+            sourceCodec: stream.codec,
             language: stream.language,
             streamIndex: stream.index,
             title: stream.title,
+            relativeUrl: '',
+            isAtmos: profile.isAtmos && isAtmosSource,
          });
       }
    }

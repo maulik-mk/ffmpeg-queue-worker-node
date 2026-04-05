@@ -1,0 +1,47 @@
+[
+   {
+      "name": "audio-stereo-64",
+      "channels": 2,
+      "codec": "libfdk_aac",
+      "profile": "aac_low",
+      "bitrate": 64000,
+      "sampleRate": 48000,
+      "hardwareProfile": false
+   },
+   {
+      "name": "audio-stereo-128",
+      "channels": 2,
+      "codec": "libfdk_aac",
+      "profile": "aac_low",
+      "bitrate": 128000,
+      "sampleRate": 48000,
+      "hardwareProfile": false
+   },
+   {
+      "name": "audio-stereo-160",
+      "channels": 2,
+      "codec": "libfdk_aac",
+      "profile": "aac_low",
+      "bitrate": 160000,
+      "sampleRate": 48000,
+      "hardwareProfile": false
+   },
+   {
+      "name": "audio-ac3",
+      "channels": 6,
+      "codec": "ac3",
+      "bitrate": 384000,
+      "sampleRate": 48000,
+      "hardwareProfile": true
+   },
+   {
+      "name": "audio-atmos",
+      "channels": 16,
+      "codec": "eac3",
+      "bitrate": 768000,
+      "sampleRate": 48000,
+      "hardwareProfile": true,
+      "isCinemaMaster": true,
+      "isAtmos": true
+   }
+]

@@ -15,7 +15,6 @@ import {
    computeAudioMetadata,
 } from './encoding/profiles.js';
 import { probe } from './core/probe.js';
-import { probeComplexity } from './core/complexity.js';
 import { processMasterPipeline } from './hls/pipeline.js';
 import { writeMasterPlaylist } from './hls/playlist.js';
 import { HLS_CONSTANTS } from './constants.js';
@@ -35,14 +34,6 @@ const ISO_639_1_MAP: Record<string, string> = {
    und: 'und',
 };
 
-/**
- * The "Brain" of the transcoding engine.
- *
- * @remarks
- * - Orchestrates the entire lifecycle: Probing -> Complexity Analysis -> Transcoding -> Manifest Mapping.
- * - Implements a Dispersed Hash Tree schema (via `blobPathFromUuid`) to prevent directory iteration attacks in public storage.
- * - Employs a "Smart Per-Title" intelligence: Probes the file's visual complexity before assigning final bitrates and renditions.
- */
 export class FFmpegAdapter implements TranscodeProvider {
    constructor(private readonly workDir: string = DEFAULT_WORK_DIR) {}
    async probe(sourceUrl: string): Promise<ProbeResult> {
@@ -63,15 +54,7 @@ export class FFmpegAdapter implements TranscodeProvider {
       const outputDir = path.join(this.workDir, videoId, 'hls');
       const activeProfiles = filterActiveVideoProfiles(sourceWidth, sourceHeight, videoRange);
 
-      logger.info({ videoId }, 'Analyzing video complexity for Smart Per-Title Bitrate adaptation');
-
-      const { multiplier: complexityMultiplier } = await probeComplexity(
-         sourceUrl,
-         sourceDuration,
-         videoId,
-         sourceWidth,
-         sourceHeight,
-      );
+      const complexityMultiplier = 1.0;
 
       const rawVideoVariants = computeVideoMetadata(
          activeProfiles,
