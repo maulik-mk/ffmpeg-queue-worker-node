@@ -125,8 +125,7 @@ export function videoEncoderFlags(variant: VideoVariantMeta, sourceFrameRate?: n
       isHevc ? 'hvc1' : variant.videoCodecTag.substring(0, 4),
       '-preset',
       variant.preset,
-      '-tune',
-      'film',
+      ...(codec === 'libx264' ? ['-tune', 'film'] : []), // hotfix/20-remove-x265-film-tune #20
       ...(fpsInfo ? ['-r', fpsInfo.ffmpegFraction, '-fps_mode', 'cfr'] : []),
       ...(variant.profile ? ['-profile:v', variant.profile] : []),
       ...(variant.level ? ['-level', variant.level] : []),
