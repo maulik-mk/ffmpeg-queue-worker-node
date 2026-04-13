@@ -1,12 +1,11 @@
 /**
- * Runtime configuration validated via Zod schema.
- * Designed to fail-fast: if any required variable is missing or malformed, the process crashes
- * immediately before attempting to bind ports or connect to the database.
+ * Configuration loaded from environment variables using Zod.
+ * The application will crash on startup if any required values are missing or incorrect.
  */
 import { z } from 'zod';
 
 /**
- * Strips literal quotes injected by `.env` loaders to prevent DSN/connection string parsing errors.
+ * Removes extra quotation marks from environment variables.
  */
 const unquotedString = z.string().transform((s) => s.replace(/^["'](.*?)["']$/, '$1'));
 
@@ -31,6 +30,7 @@ const envSchema = z.object({
    AZURE_UPLOAD_RETRIES: z.coerce.number().default(3),
    AZURE_STORAGE_CONNECTION_STRING: unquotedString.optional(),
    AZURE_STORAGE_ACCOUNT_URL: unquotedString.optional(),
+   AZURE_MANAGED_IDENTITY_CLIENT_ID: unquotedString.optional(),
    AZURE_STORAGE_CONTAINER_NAME: unquotedString.pipe(
       z.string().min(1, 'AZURE_STORAGE_CONTAINER_NAME is required'),
    ),
@@ -42,12 +42,18 @@ const envSchema = z.object({
    DOMAIN_SUBDOMAIN_NAME: unquotedString.optional(),
 
    FFMPEG_THREADS: z.coerce.number().default(0),
-   X265_POOL_SIZE: z.coerce.number().default(32),
-   X265_FRAME_THREADS: z.coerce.number().default(4),
+   X265_FRAME_THREADS: z.coerce.number().default(2),
+   X265_LOOKAHEAD_THREADS: z.coerce.number().default(0),
+   X265_RC_LOOKAHEAD: z.coerce.number().default(40),
+
+   THREAD_QUEUE_SIZE: z.coerce.number().default(512),
+   MAX_MUXING_QUEUE_SIZE: z.coerce.number().default(4096),
+
+   X264_RC_LOOKAHEAD: z.coerce.number().default(60),
 });
 
 /**
- * Validated application configuration. Extracted directly from `process.env`.
- * @throws {ZodError} If validation fails during module load.
+ * The validated application settings, used throughout the app.
+ * @throws {ZodError} If any environment variable rules are broken.
  */
 export const config: z.infer<typeof envSchema> = envSchema.parse(process.env);

@@ -1,11 +1,12 @@
 /**
- * Application entry point: Bootstraps the HTTP server and BullMQ worker.
+ * Main entry point for the Node.js Fastify application.
+ * Starts the HTTP server and instantiates the BullMQ background queue worker.
  *
  * @remarks
- * - Wires the dependency injection graph for the video processing pipeline.
- * - Exposes Kubernetes-compatible readiness (`/ready`) and liveness (`/health`) probes.
- * - Enforces a strict 30s graceful shutdown timeout on SIGINT/SIGTERM to prevent
- *   orphaned pods if external dependencies (e.g., Azure Storage, DB) hang.
+ * - Wires dependency injection for the repository, storage client, and ffmpeg interfaces.
+ * - Provides basic `/health` and `/ready` routes for Kubernetes liveness/readiness probes.
+ * - Binds graceful shutdown handlers (SIGINT/SIGTERM) to allow active FFmpeg processes
+ *   or lingering PostgreSQL inserts to flush before exiting.
  */
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';

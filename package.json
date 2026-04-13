@@ -13,6 +13,8 @@
     "build": "rm -rf dist && tsc && find src -name '*.json' | while read f; do mkdir -p dist/$(dirname ${f#src/}) && cp $f dist/${f#src/}; done",
     "dev:local:format": "prettier --write \"src/**/*.{ts,json}\"",
     "dev:local:build:docker": "docker build -t worker-local-dev .",
+    "dev:local:build:docker:arm64": "docker build --platform linux/arm64 -t worker-local-dev .",
+    "dev:local:build:docker:amd64": "docker build --platform linux/amd64 -t worker-local-dev .",
     "dev:local:test:job": "tsx --env-file=.env test/queue-job.test.local.ts",
     "dev:local:run:docker": "docker run --env-file .env worker-local-dev",
     "dev:local:e2e": "pnpm run dev:local:format && pnpm run dev:local:build:docker && pnpm run dev:local:test:job && pnpm run dev:local:run:docker"

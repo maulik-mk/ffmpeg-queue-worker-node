@@ -16,7 +16,7 @@ import { pino } from 'pino';
 const logger = pino({ name: 'ProcessVideo' });
 
 /**
- * Orchestrates the core video processing pipeline: Download -> Probe -> Transcode -> Upload.
+ * Orchestrates the domain lifecycle of a video ingest job: Network -> Probe -> Encode -> Storage.
  */
 export class ProcessVideo implements ProcessVideoUseCase {
    constructor(
@@ -25,6 +25,17 @@ export class ProcessVideo implements ProcessVideoUseCase {
       private readonly db: VideoRepository,
    ) {}
 
+   /**
+    * Executes the sequential pipeline required to convert an arbitrary media source to HLS.
+    *
+    * - Streams the raw source over HTTP directly to local NVMe via `node:stream/promises` to avoid RAM saturation.
+    * - Invokes `ffprobe` to determine target mapping bounds (`sourceWidth`, `sourceHeight`).
+    * - Updates the database (PostgreSQL) incrementally based on status transitions to prevent worker lock loss.
+    *
+    * @param job - Required DTO mapping `videoId` to an inbound `sourceUrl`.
+    * @param onProgress - BullMQ callback exposing fractional `Math.round()` percentage integers back to Redis.
+    * @throws {WorkerError} Forwards non-zero FFmpeg exits or network IO disconnects back to BullMQ for retry evaluation.
+    */
    async execute(job: JobData, onProgress?: ProgressCallback): Promise<void> {
       const { videoId, sourceUrl, webhookUrl } = job;
       logger.info({ videoId, sourceUrl, webhookUrl }, 'Starting video processing pipeline');

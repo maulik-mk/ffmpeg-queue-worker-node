@@ -1,10 +1,17 @@
+/**
+ * Explicit schema interfaces required across the ingestion boundaries (worker -> pg -> storage).
+ */
 export interface JobData {
    videoId: string;
    sourceUrl: string;
    userId: string;
+   /** Resolves a callback POST upon zero-exit codes enabling loose-coupled status meshes. */
    webhookUrl?: string;
 }
 
+/**
+ * Indexed mapping bound to libavformat streams array for track persistence.
+ */
 export interface AudioStreamInfo {
    index: number;
    codec: string;
@@ -13,6 +20,9 @@ export interface AudioStreamInfo {
    title: string;
 }
 
+/**
+ * Maps raw `ffprobe` JSON outputs into explicitly-typed constraints.
+ */
 export interface ProbeResult {
    duration: number;
    width: number;
@@ -26,19 +36,30 @@ export interface ProbeResult {
    videoRange: string;
 }
 
+/**
+ * Output artifact references mapped directly into CDN manifest namespaces.
+ */
 export interface VideoRendition {
    resolution: string;
    width: number;
    height: number;
    bitrate: number;
+   /** Pre-built HTTP relative-blob URL mapping directly to EXT-X-STREAM-INF payloads. */
    url: string;
 }
 
+/**
+ * Final memory resolution passed back up to the master BullMQ job processor.
+ */
 export interface TranscodeResult {
+   /** Virtualized tmpfs / NVMe root mapping the segmented output arrays. */
    outputDir: string;
    renditions: VideoRendition[];
 }
 
+/**
+ * Tracks row-level states in PostgreSQL to handle pre-emption and idempotency locks.
+ */
 export type JobStatus =
    | 'queued'
    | 'processing'
@@ -47,6 +68,9 @@ export type JobStatus =
    | 'completed'
    | 'failed';
 
+/**
+ * Implements the atomic transactions expected off `pg` client handles.
+ */
 export interface VideoRepository {
    updateStatus(
       videoId: string,
@@ -59,21 +83,33 @@ export interface VideoRepository {
 }
 
 /**
- * Dependency-inversion interface for blob storage providers (e.g., Azure Blob Storage, AWS S3).
+ * Maps the internal Node disk blocks outwards to object blob spaces via multipart SDK uploads.
  */
 export interface StorageProvider {
+   /**
+    * Iterates the segment manifests onto Azure/AWS, injecting exact `video/mp4` and `application/vnd.apple.mpegurl` headers.
+    * @returns Fully qualified FQDN for the resulting master array.
+    */
    uploadHLS(folderPath: string, videoId: string, onProgress?: ProgressCallback): Promise<string>;
 }
 
+/**
+ * Progress delegate invoked off chunk offsets per internal `ffprobe` loop bindings.
+ */
 export type ProgressCallback = (data: { variant: string; percent: number }) => void;
 
 /**
- * Domain boundary around the native FFmpeg system binary.
- * Implementors must guarantee that `cleanup()` removes all trailing artifacts from the OS.
+ * Abstract boundary wrapping child_process execution of the native OS ffmpeg binary.
  */
 export interface TranscodeProvider {
+   /**
+    * Synchronous `spawn` intercept for the inbound libavformat properties array.
+    */
    probe(sourceUrl: string): Promise<ProbeResult>;
 
+   /**
+    * Pushes bounded stream definitions through the libx265 / libx264 cores.
+    */
    transcodeHLS(
       sourceUrl: string,
       videoId: string,
@@ -86,9 +122,15 @@ export interface TranscodeProvider {
       videoRange?: string,
    ): Promise<TranscodeResult>;
 
+   /**
+    * Empties the `tmpfs` blocks post-execution, strictly avoiding disk bloat errors.
+    */
    cleanup(videoId: string): Promise<void>;
 }
 
+/**
+ * Dependency-injected service orchestrating the state/execute lifecycle of worker units.
+ */
 export interface ProcessVideoUseCase {
    execute(job: JobData, onProgress?: ProgressCallback): Promise<void>;
 }
