@@ -170,11 +170,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 # -----------------------------------------------------------------------------
 # Metadata & OCI Labels
 # -----------------------------------------------------------------------------
-ARG VERSION=0.3.1
+ARG VERSION=0.3.2
 ARG BUILD_DATE=unknown
 
 LABEL org.opencontainers.image.title="ffmpeg-queue-worker-node" \
-      org.opencontainers.image.description="FFmpeg 7.1 (w/ VMAF) & Node.js Video Job Worker" \
+      org.opencontainers.image.description="FFmpeg 7.1 & Node.js Video Job Worker" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.authors="Maulik M. Kadeval" \

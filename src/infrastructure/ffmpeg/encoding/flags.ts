@@ -175,7 +175,7 @@ export function videoEncoderFlags(variant: VideoVariantMeta, sourceFrameRate?: n
 
       baseFlags.push(
          '-x265-params',
-         `pools=${config.X265_POOL_SIZE}:frame-threads=${config.X265_FRAME_THREADS}:wpp=1:pmode=1:pme=1:no-open-gop=1:scenecut=0:keyint=${gopSize}:min-keyint=${gopSize}:info=0:colorprim=${colorPrimaries}:transfer=${colorTransfer}:colormatrix=${colorMatrix}${extraHdrParams}${dvhParam}`,
+         `pools=${config.X265_POOL_SIZE}:frame-threads=${config.X265_FRAME_THREADS}:wpp=1:no-open-gop=1:scenecut=0:keyint=${gopSize}:min-keyint=${gopSize}:info=0:colorprim=${colorPrimaries}:transfer=${colorTransfer}:colormatrix=${colorMatrix}${extraHdrParams}${dvhParam}`,
          '-flags',
          '+global_header',
       );
