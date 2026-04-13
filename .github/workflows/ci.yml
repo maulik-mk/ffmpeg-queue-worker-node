@@ -24,18 +24,19 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Extract Dockerfile VERSION
+      # 2. Extract Dockerfile VERSION and create Floating Minor Version
       - name: Read Dockerfile VERSION
         id: docker_version
         run: |
+          # Extract the exact version (e.g., "0.3.1")
           VERSION=$(grep -E '^ARG VERSION=' Dockerfile | cut -d '=' -f2 | tr -d '"')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Found Dockerfile VERSION=$VERSION"
-          if [[ "$VERSION" =~ \.0$ ]]; then
-            echo "IS_MAJOR_MINOR=true" >> $GITHUB_ENV
-          else
-            echo "IS_MAJOR_MINOR=false" >> $GITHUB_ENV
-          fi
+          
+          # Extract the minor floating version (e.g., "0.3" from "0.3.1")
+          MINOR_VERSION=$(echo $VERSION | cut -d. -f1,2)
+          echo "MINOR_VERSION=$MINOR_VERSION" >> $GITHUB_ENV
+          echo "Floating Minor Version=$MINOR_VERSION"
 
       # 3. Set Build Date
       - name: Set Build Date
@@ -50,35 +51,19 @@ jobs:
         id: docker_labels
         run: |
           echo "Extracting labels from Dockerfile..."
-          # Remove leading LABEL and combine into single line (multi-line support)
           LABELS=$(grep '^LABEL ' Dockerfile | sed 's/^LABEL //' | tr '\n' ' ')
-          # Replace ARG placeholders with ENV values
           LABELS="${LABELS//\${VERSION}/${{ env.VERSION }}}"
           LABELS="${LABELS//\${BUILD_DATE}/${{ env.BUILD_DATE }}}"
           echo "DOCKER_LABELS=$LABELS" >> $GITHUB_ENV
           echo "Extracted labels: $LABELS"
 
-      # 5. Check if Docker image VERSION exists in GHCR
-      - name: Check if Docker image VERSION exists
-        if: github.ref == 'refs/heads/main' && env.IS_MAJOR_MINOR == 'true'
-        id: check_version
-        run: |
-          EXISTING_TAG=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://ghcr.io/v2/${{ github.repository }}/tags/list" | jq -r '.tags[]?' | grep "^${{ env.VERSION }}$" || true)
-          echo "EXISTING_TAG=$EXISTING_TAG" >> $GITHUB_ENV
-          if [ "$EXISTING_TAG" = "${{ env.VERSION }}" ]; then
-            echo "Docker image VERSION=${{ env.VERSION }} already exists. Skipping build/push."
-          else
-            echo "Docker image VERSION=${{ env.VERSION }} is new. Will build/push."
-          fi
-
-      # 6. Set up Docker Buildx
+      # 5. Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 7. Build Docker image (only if new VERSION)
+      # 6. Build Docker image
       - name: Build and Load Docker Image
-        if: github.ref == 'refs/heads/main' && env.EXISTING_TAG == '' && env.IS_MAJOR_MINOR == 'true'
+        if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -89,41 +74,44 @@ jobs:
           labels: ${{ env.DOCKER_LABELS }}
           tags: |
             worker-ffmpeg:${{ env.VERSION }}
+            worker-ffmpeg:${{ env.MINOR_VERSION }}
             worker-ffmpeg:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 8. Log in to GHCR
+      # 7. Log in to GHCR
       - name: Log in to GitHub Container Registry
-        if: github.ref == 'refs/heads/main' && env.EXISTING_TAG == '' && env.IS_MAJOR_MINOR == 'true'
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. Download Test Asset
+      # 8. Download Test Asset
       - name: Download Test Asset
         run: .github/scripts/download_test_video.sh
 
-      # 10. Run Test Suite
+      # 9. Run Test Suite
       - name: Run Test Suite
         run: .github/scripts/run_tests.sh
 
-      # 11. Push Docker image to GHCR (only if new VERSION)
+      # 10. Push Docker image to GHCR with all tags
       - name: Push to GHCR
-        if: github.ref == 'refs/heads/main' && env.EXISTING_TAG == '' && env.IS_MAJOR_MINOR == 'true'
+        if: github.ref == 'refs/heads/main'
         run: |
           IMAGE_ID=ghcr.io/${{ github.repository }}
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
 
-          # Tag images
+          # Apply the exact patch tag, the floating minor tag, and the latest/sha tags
           docker tag worker-ffmpeg:${{ env.VERSION }} $IMAGE_ID:${{ env.VERSION }}
+          docker tag worker-ffmpeg:${{ env.MINOR_VERSION }} $IMAGE_ID:${{ env.MINOR_VERSION }}
           docker tag worker-ffmpeg:latest $IMAGE_ID:latest
           docker tag worker-ffmpeg:latest $IMAGE_ID:${{ github.sha }}
 
-          # Push images
-          echo "Pushing $IMAGE_ID:${{ env.VERSION }}"
+          # Push all tags to the registry
+          echo "Pushing $IMAGE_ID tags to GHCR..."
           docker push $IMAGE_ID:${{ env.VERSION }}
+          docker push $IMAGE_ID:${{ env.MINOR_VERSION }}
           docker push $IMAGE_ID:latest
           docker push $IMAGE_ID:${{ github.sha }}

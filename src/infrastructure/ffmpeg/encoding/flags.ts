@@ -125,8 +125,7 @@ export function videoEncoderFlags(variant: VideoVariantMeta, sourceFrameRate?: n
       isHevc ? 'hvc1' : variant.videoCodecTag.substring(0, 4),
       '-preset',
       variant.preset,
-      '-tune',
-      'film',
+      ...(codec === 'libx264' ? ['-tune', 'film'] : []), // hotfix/20-remove-x265-film-tune #20
       ...(fpsInfo ? ['-r', fpsInfo.ffmpegFraction, '-fps_mode', 'cfr'] : []),
       ...(variant.profile ? ['-profile:v', variant.profile] : []),
       ...(variant.level ? ['-level', variant.level] : []),
@@ -176,7 +175,7 @@ export function videoEncoderFlags(variant: VideoVariantMeta, sourceFrameRate?: n
 
       baseFlags.push(
          '-x265-params',
-         `pools=${config.X265_POOL_SIZE}:frame-threads=${config.X265_FRAME_THREADS}:wpp=1:pmode=1:pme=1:no-open-gop=1:scenecut=0:keyint=${gopSize}:min-keyint=${gopSize}:info=0:colorprim=${colorPrimaries}:transfer=${colorTransfer}:colormatrix=${colorMatrix}${extraHdrParams}${dvhParam}`,
+         `pools=${config.X265_POOL_SIZE}:frame-threads=${config.X265_FRAME_THREADS}:wpp=1:no-open-gop=1:scenecut=0:keyint=${gopSize}:min-keyint=${gopSize}:info=0:colorprim=${colorPrimaries}:transfer=${colorTransfer}:colormatrix=${colorMatrix}${extraHdrParams}${dvhParam}`,
          '-flags',
          '+global_header',
       );
