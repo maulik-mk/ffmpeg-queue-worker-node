@@ -88,14 +88,14 @@ verify_ffprobe_version() {
 # Step 4: Verify supported codecs
 verify_codecs() {
     log_header "Step 4: Validating Supported Codecs"
-    log_info "Checking for required libraries: libx264 (H.264) and libfdk_aac (AAC)..."
+    log_info "Checking for required libraries: libx264 (H.264), libx265 (H.265) and libfdk_aac (AAC)..."
     
     local codecs
-    if codecs=$(docker run --rm "${IMAGE_NAME}" ffmpeg -codecs 2>/dev/null | grep -E "libx264|libfdk_aac"); then
+    if codecs=$(docker run --rm "${IMAGE_NAME}" ffmpeg -codecs 2>/dev/null | grep -E "libx264|libx265|libfdk_aac"); then
         echo "$codecs"
         log_success "Required codecs verified successfully."
     else
-        log_error "Critical Error: Required codecs (libx264, libfdk_aac) are missing from the image."
+        log_error "Critical Error: Required codecs (libx264, libx265, libfdk_aac) are missing from the image."
         exit 1
     fi
 }

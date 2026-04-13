@@ -40,7 +40,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     pkg-config \
     nasm \
-    yasm \
     wget \
     git \
     cmake \
@@ -72,7 +71,7 @@ RUN git clone --depth 1 https://github.com/Netflix/vmaf.git /tmp/vmaf && \
 # -----------------------------------------------------------------------------
 # 3. Download FFmpeg Source Code
 # -----------------------------------------------------------------------------
-ARG FFMPEG_VERSION=7.1
+ARG FFMPEG_VERSION=8.1
 RUN wget -q https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 && \
     tar xjf ffmpeg-${FFMPEG_VERSION}.tar.bz2 && \
     rm ffmpeg-${FFMPEG_VERSION}.tar.bz2
@@ -90,7 +89,9 @@ RUN PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/x8
     --enable-gpl \
     --enable-nonfree \
     --enable-version3 \
+    --enable-pthreads \
     --enable-swresample \
+    --enable-swscale \
     --enable-libsoxr \
     --enable-libopus \
     --enable-libx264 \
@@ -108,7 +109,6 @@ RUN PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/x8
     --disable-doc \
     --disable-debug \
     --disable-ffplay \
-    --disable-autodetect \
     --disable-sdl2 \
     --disable-libxcb \
     --disable-libxcb-shm \
@@ -125,7 +125,7 @@ RUN PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/x8
     --disable-nvdec \
     --disable-indevs \
     --disable-outdevs \
-    --extra-cflags="-O2" \
+    --extra-cflags="-O3 -march=x86-64-v3 -pipe -fomit-frame-pointer" \
     && make -j$(nproc) \
     && make install \
     && strip /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
@@ -160,7 +160,7 @@ RUN pnpm run build
 
 # =============================================================================
 # Stage 3 — Production Runtime
-# Final optimized image containing the compiled Node.js application, the custom 
+# Final image containing the compiled Node.js application, the custom 
 # FFmpeg binary, and minimal shared runtime libraries.
 # =============================================================================
 FROM ubuntu:24.04
@@ -170,11 +170,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 # -----------------------------------------------------------------------------
 # Metadata & OCI Labels
 # -----------------------------------------------------------------------------
-ARG VERSION=0.3.2
+ARG VERSION=0.4.0
 ARG BUILD_DATE=unknown
 
 LABEL org.opencontainers.image.title="ffmpeg-queue-worker-node" \
-      org.opencontainers.image.description="FFmpeg 7.1 & Node.js Video Job Worker" \
+      org.opencontainers.image.description="FFmpeg 8.1 & Node.js Video Job Worker" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.authors="Maulik M. Kadeval" \

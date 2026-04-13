@@ -1,5 +1,9 @@
 import type { ProgressCallback } from '../../domain/job.interface.js';
 
+/**
+ * Baseline constraints defining video multiplex arrays.
+ * Binds explicit maxrate and bufsize to avoid CDN/Player network buffer starvation.
+ */
 export interface VideoProfile {
    tierNumber?: number;
    name: string;
@@ -19,6 +23,9 @@ export interface VideoProfile {
    crf?: number;
 }
 
+/**
+ * Encodes deterministic track constraints per ITU limits.
+ */
 export interface AudioProfile {
    name: string;
    groupId?: string;
@@ -32,12 +39,18 @@ export interface AudioProfile {
    isCinemaMaster?: boolean;
 }
 
+/**
+ * Maps the abstract `VideoProfile` onto explicit bounding-box scale factors computed off `ffprobe` DAR constraints.
+ */
 export type VideoVariantMeta = VideoProfile & {
    actualWidth: number;
    actualHeight: number;
    relativeUrl: string;
 };
 
+/**
+ * Merges surround-sound source maps from `AudioProfile` onto downmix definitions.
+ */
 export type AudioVariantMeta = AudioProfile & {
    groupId?: string;
    sourceChannels: number;
@@ -48,6 +61,9 @@ export type AudioVariantMeta = AudioProfile & {
    relativeUrl: string;
 };
 
+/**
+ * Forces spawn arrays onto sub-shell PIDs.
+ */
 export interface RunOptions {
    args: string[];
    label: string;

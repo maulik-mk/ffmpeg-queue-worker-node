@@ -34,12 +34,37 @@ const ISO_639_1_MAP: Record<string, string> = {
    und: 'und',
 };
 
+/**
+ * Primary FFmpeg controller orchestrating pipeline sub-shells and local IO states.
+ */
 export class FFmpegAdapter implements TranscodeProvider {
    constructor(private readonly workDir: string = DEFAULT_WORK_DIR) {}
+
+   /**
+    * Triggers the libavformat container parser (probe.js core execution) for structural metadata.
+    */
    async probe(sourceUrl: string): Promise<ProbeResult> {
       return probe(sourceUrl);
    }
 
+   /**
+    * Filters an inbound source topology against restricted `profiles.json` ladders
+    * and dispatches them sequentially through libx264/libx265 encoding cores.
+    *
+    * - Invokes a unified UUID UUIDv4 string (`tierId`) mapper across the audio/video chunks
+    *   to prevent URL discovery brute force iterations.
+    *
+    * @param sourceUrl - Network accessible inbound blob stream.
+    * @param videoId - Used entirely for namespace tracking in logs and storage boundaries.
+    * @param sourceWidth - Display layer pixel constraint mapped from `ffprobe`.
+    * @param sourceHeight - Display layer scale mapped.
+    * @param sourceDuration - Length evaluation multiplier for `progress()` calculations.
+    * @param onProgress - Timecode scalar callback bridging percentage reports to the BullMQ wrapper.
+    * @param sourceFrameRate - Baseline framerate for computing expected drop-frame bounds (NTSC limits).
+    * @param audioStreams - FFprobe indexed track list mapped against requested Atmos definitions.
+    * @param videoRange - Enforces strict transfer characteristics arrays ('SDR', 'PQ', 'HLG').
+    * @returns Resolution paths mapped to `blobPathFromUuid` for the final Azure ingest.
+    */
    async transcodeHLS(
       sourceUrl: string,
       videoId: string,
