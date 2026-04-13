@@ -16,9 +16,10 @@ import { HLS_CONSTANTS } from '../constants.js';
 const logger = pino({ name: 'HlsPipeline' });
 
 /**
- * Post-process variant manifests to fix init segment URIs.
- * FFmpeg's -hls_base_url only applies to .m4s segment URIs, NOT to #EXT-X-MAP:URI (init segments).
- * This function prepends the CDN base URL to the init segment filename.
+ * Rewrites the EXT-X-MAP:URI attribute in variant playlists.
+ * This works around an FFmpeg limitation where `-hls_base_url` affects `.m4s` segments
+ * but fails to prepend to the `.mp4` initialization segment.
+ * Required for players (e.g. video.js) resolving relative URLs from absolute master manifests.
  */
 async function fixInitSegmentUrls(
    outputDir: string,
@@ -40,6 +41,25 @@ async function fixInitSegmentUrls(
    }
 }
 
+/**
+ * Runs sequential Sub-Pipeline instances for A/V encoding per quality ladder arrays.
+ *
+ * - Extracts and muxes all audio profiles in a single FFmpeg pass (Pass 0) as CPU overhead is negligible.
+ * - Splits libx264, libx265 (SDR), and libx265 (HDR) arrays into synchronous execution steps. This
+ *   prevents Out-Of-Memory (OOM) kills on high-resolution ladder runs by restricting thread counts
+ *   within constraints set by `-threads` and `-x265-params frame-threads`.
+ *
+ * @param sourceUrl - HTTP or local OS URI for source stream.
+ * @param outputDir - Workspace root output directory path.
+ * @param videoId - Primary key identifying the execution namespace.
+ * @param videoVariants - Complete array of bounding resolutions and explicit bitrates.
+ * @param audioRenditions - Array of isolated stereo and surround AC-3 maps.
+ * @param hlsTime - Fragment timescale boundary (forces `#EXTINF` and IDR intervals).
+ * @param onProgress - Timecode scalar callback bridging percentage reports to external channels.
+ * @param sourceFrameRate - Native constant frame rate metadata extracted by libavformat.
+ * @param sourceDuration - Length evaluation multiplier for percent calculations.
+ * @param videoRange - Video transfer characteristics mapped to 'SDR', 'HLG' (ARIB B67), or 'PQ' (ST2084).
+ */
 export async function processMasterPipeline(
    sourceUrl: string,
    outputDir: string,
@@ -84,6 +104,14 @@ export async function processMasterPipeline(
 
    const getBaseInputArgs = () => {
       const args = [];
+
+      args.push('-y');
+      args.push('-hide_banner');
+      args.push('-loglevel', 'level+info');
+      args.push('-stats');
+      args.push('-nostdin');
+      args.push('-threads', '0');
+      args.push('-thread_queue_size', String(config.THREAD_QUEUE_SIZE));
 
       args.push('-drc_scale', '0');
 
@@ -162,6 +190,7 @@ export async function processMasterPipeline(
          filtergraph.push(`[split_${i}]${scaleFilter}[vout${i}]`);
       });
 
+      args.push('-filter_complex_threads', '0');
       args.push('-filter_complex', filtergraph.join('; '));
 
       variants.forEach((variant, index) => {

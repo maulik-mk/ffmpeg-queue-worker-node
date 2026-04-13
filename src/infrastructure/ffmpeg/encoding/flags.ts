@@ -9,6 +9,10 @@ export interface FrameRateInfo {
    gopSize: number;
 }
 
+/**
+ * Normalizes input framerate to strictly enforced NTSC drop-frame broadcast standards (24000/1001, 30000/1001).
+ * Fixes temporal jitter caused by rounding errors in 23.976 / 29.970 media files.
+ */
 export function getBroadcastFrameRate(sourceFps?: number): FrameRateInfo | null {
    if (!sourceFps) return null;
 
@@ -39,6 +43,13 @@ export function getBroadcastFrameRate(sourceFps?: number): FrameRateInfo | null 
    };
 }
 
+/**
+ * Constructs the `-f hls` output parameter blocks for libavformat.
+ *
+ * - Forces fMP4 fragments instead of TS containers to reduce byte bloat and improve CDN caching.
+ * - Extracts `tfhd` offset tracking (`+omit_tfhd_offset`) to remain fully CMAF compliant.
+ * - Explicitly pushes a `+genpts` fflag so broken presentation timestamps do not crash the muxer queue.
+ */
 export function hlsOutputFlags(
    hlsTime: number,
    outputDir: string,
@@ -66,7 +77,7 @@ export function hlsOutputFlags(
       '-hls_fmp4_init_filename',
       initPattern,
       '-movflags',
-      '+frag_keyframe+empty_moov+default_base_moof+cmaf+omit_tfhd_offset',
+      '+frag_keyframe+empty_moov+default_base_moof+cmaf+omit_tfhd_offset+write_colr',
       '-f',
       'hls',
       '-hls_time',
@@ -91,6 +102,8 @@ export function hlsOutputFlags(
       '1',
       '-video_track_timescale',
       '90000',
+      '-max_muxing_queue_size',
+      String(config.MAX_MUXING_QUEUE_SIZE),
    ];
 
    if (baseUrl) {
@@ -100,6 +113,14 @@ export function hlsOutputFlags(
    return flags;
 }
 
+/**
+ * Maps variant resolution and HDR configurations to x264/x265 encoder flags.
+ *
+ * - Enforces CFR (Constant Frame Rate) to prevent A/V sync drift on manifest boundaries.
+ * - Restricts VBV buffer size (`-bufsize`) tight to `-maxrate` to prevent playback buffer underflow on constrained memory devices (ref: Apple HLS Authoring Spec).
+ * - Forces IDR frames strictly at GOP bounds (`-sc_threshold 0`) to guarantee seamless ABR switching.
+ * - Injects static HDR10 metadata (MaxCLL/Master Display) for SMPTE ST 2084 compliance.
+ */
 export function videoEncoderFlags(variant: VideoVariantMeta, sourceFrameRate?: number): string[] {
    const fpsInfo = getBroadcastFrameRate(sourceFrameRate);
    const gopSize = fpsInfo ? fpsInfo.gopSize : 48;
@@ -175,14 +196,14 @@ export function videoEncoderFlags(variant: VideoVariantMeta, sourceFrameRate?: n
 
       baseFlags.push(
          '-x265-params',
-         `pools=${config.X265_POOL_SIZE}:frame-threads=${config.X265_FRAME_THREADS}:wpp=1:no-open-gop=1:scenecut=0:keyint=${gopSize}:min-keyint=${gopSize}:info=0:colorprim=${colorPrimaries}:transfer=${colorTransfer}:colormatrix=${colorMatrix}${extraHdrParams}${dvhParam}`,
+         `frame-threads=${config.X265_FRAME_THREADS}:wpp=1:rc-lookahead=${config.X265_RC_LOOKAHEAD}:lookahead-threads=${config.X265_LOOKAHEAD_THREADS}:no-open-gop=1:scenecut=0:keyint=${gopSize}:min-keyint=${gopSize}:info=0:no-sao=1:aq-mode=3:aq-strength=1.0:no-strong-intra-smoothing=1:deblock=-2,-2:rd=4:rdoq-level=2:tu-intra-depth=3:tu-inter-depth=3:b-adapt=2:colorprim=${colorPrimaries}:transfer=${colorTransfer}:colormatrix=${colorMatrix}${extraHdrParams}${dvhParam}`,
          '-flags',
          '+global_header',
       );
    } else {
       baseFlags.push(
          '-x264-params',
-         `threads=${config.FFMPEG_THREADS === 0 ? 'auto' : config.FFMPEG_THREADS}`,
+         `threads=${config.FFMPEG_THREADS === 0 ? 'auto' : config.FFMPEG_THREADS}:rc-lookahead=${config.X264_RC_LOOKAHEAD}:lookahead-threads=auto:aq-mode=3:b-adapt=2:trellis=2:subme=9:me=umh:direct=auto:deblock=-1,-1`,
          '-flags',
          '+cgop+global_header',
       );
@@ -191,13 +212,26 @@ export function videoEncoderFlags(variant: VideoVariantMeta, sourceFrameRate?: n
    return baseFlags;
 }
 
+/**
+ * Generates the scale and setsar (Sample Aspect Ratio) filter graph.
+ *
+ * - Forces `setsar=1/1` bounds to prevent player hardware layout issues with anamorphic sources.
+ * - Interpolates pixels via `spline+accurate_rnd+full_chroma_int` to preserve chroma sub-sampling accuracy during 10-bit YUV 4:2:0 downscales.
+ */
 export function videoFilterChain(width: number, height: number): string {
    return [
-      `scale=${width}:${height}:force_original_aspect_ratio=disable:flags=lanczos`,
+      `scale=${width}:${height}:force_original_aspect_ratio=disable:flags=spline+accurate_rnd+full_chroma_int`,
       'setsar=1/1',
    ].join(',');
 }
 
+/**
+ * Resolves FDK-AAC and AC3 command flags, bypassing the transcoder for Atmos streams.
+ *
+ * - Enforces ITU-R BS.1770-4 loudness normalization (Target I=-24, TP=-2.0) on all stereo variants to match broadcast television levels.
+ * - Handles 5.1 -> 2.0 fold-down using the standard ITU downmix coefficients (LFE=0.2, FC=0.707).
+ * - Implements Shibata dithering during SOXR resampling for precision truncation.
+ */
 export function audioEncoderFlags(audio: AudioVariantMeta): string[] {
    if (audio.isAtmos) {
       return ['-c:a', 'copy'];

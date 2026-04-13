@@ -6,12 +6,19 @@ import type { RunOptions } from '../types.js';
 const logger = pino({ name: 'FFmpegRunner' });
 
 /**
- * Robust child-process wrapper for invoking the FFmpeg binary safely in Node.js.
+ * Runs the ffmpeg tool in the background.
  *
  * @remarks
- * - Parses FFmpeg's chaotic `stderr` payload to extract frame-accurate progression values.
- * - Maintains a rolling buffer of `stderr` (hard-capped at 50kb) to prevent V8 memory leaks during hours-long encodes.
- * - Maps raw exit codes and the tail of the stderr buffer into actionable `TranscodeError` domain exceptions.
+ * - Reads ffmpeg's stderr output to figure out how much has been processed.
+ * - Keeps a small log buffer of the output so we have details if it crashes.
+ * - Turns bad exit codes into regular errors we can catch.
+ *
+ * @param opts.args - The flags and inputs passed to the ffmpeg command.
+ * @param opts.label - A short name for this encoding step (for example, 'Audio_Conversion').
+ * @param opts.videoId - The ID of the video being processed.
+ * @param opts.onProgress - A callback that fires when ffmpeg reports new progress.
+ * @param opts.duration - Handed over so we can calculate the percentage done.
+ * @returns Resolves when the ffmpeg command finishes successfully.
  */
 export function runFFmpeg(opts: RunOptions): Promise<void> {
    const { args, label, videoId, onProgress, duration } = opts;
@@ -28,8 +35,8 @@ export function runFFmpeg(opts: RunOptions): Promise<void> {
          const text = chunk.toString();
          stderrBuffer += text;
 
-         if (stderrBuffer.length > 50000) {
-            stderrBuffer = stderrBuffer.slice(-25000);
+         if (stderrBuffer.length > 200_000) {
+            stderrBuffer = stderrBuffer.slice(-100_000);
          }
 
          if (onProgress || duration) {
@@ -103,6 +110,14 @@ interface FfprobeOutput {
    format: FfprobeFormat;
 }
 
+/**
+ * Gets details about a media file (like duration and streams) by running ffprobe.
+ *
+ * @param sourceUrl - Path or URL to the video file.
+ * @returns The parsed video and audio metadata.
+ * @throws {ValidationError} Thrown if ffprobe returns invalid JSON bounds.
+ * @throws {SourceNotFoundError} Thrown if the video cannot be downloaded.
+ */
 export function runFFprobe(sourceUrl: string): Promise<FfprobeOutput> {
    const args = [
       '-v',

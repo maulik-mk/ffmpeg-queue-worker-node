@@ -28,13 +28,15 @@ async function runCommand(args: string[]): Promise<string> {
 }
 
 /**
- * Orchestrates a mathematically-driven Smart Per-Title Bitrate adaptation using Netflix's VMAF model.
+ * Checks how complex a video is to figure out the right bitrate multiplier.
+ * Runs a quick high-quality sample encode to target a good VMAF score.
  *
- * @remarks
- * - Phase 1: Generates a near-lossless reference encode (CRF 10, ultrafast) to establish a pristine baseline.
- * - Phase 2: Encodes empirical test points (CRF 19, 23, 27) and scores them against the reference using the VMAF neural network.
- * - Phase 3: Interpolates a Rate-Distortion curve to find the exact bits-per-second required to hit a perceptive VMAF score of 95.0.
- * - Bounding: Applies strict OTT resolution safety floors to prevent bitrate explosion on noisy/grainy source files.
+ * @param sourceUrl - Path or URL to the original video file.
+ * @param duration - Length of the video in seconds, used to report progress.
+ * @param videoId - Unique ID for the video being processed.
+ * @param sourceWidth - Width of the source video in pixels.
+ * @param sourceHeight - Height of the source video in pixels.
+ * @returns A multiplier number that adjusts the final bitrate up or down.
  */
 export async function probeComplexity(
    sourceUrl: string,

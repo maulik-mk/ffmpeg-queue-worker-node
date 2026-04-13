@@ -7,6 +7,13 @@ const logger = pino({ name: 'ProbeCommand' });
 const MAX_DURATION_SECONDS = 7200;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 * 1024;
 
+/**
+ * Evaluates bounding matrices against `ffprobe` outputs mapped per JSON.
+ *
+ * - Traverses all stream variants validating existence of at least one `codec_type === 'video'`.
+ * - Maps fractions `r_frame_rate` (e.g. `24000/1001`) into rounded numbers for internal math logic
+ *   protecting drop-frame sync integrity.
+ */
 export async function probe(sourceUrl: string): Promise<ProbeResult> {
    logger.info({ sourceUrl }, 'Probing source video');
 

@@ -41,6 +41,15 @@ const VIDEO_PROFILES: VideoProfile[] = [
 
 const AUDIO_PROFILES: AudioProfile[] = ABR_AUDIO;
 
+/**
+ * Picks the video resolutions to generate based on the original video's size and color format.
+ * Drops quality levels that would stretch the video larger than its original size.
+ *
+ * @param sourceWidth - Width of the original video.
+ * @param sourceHeight - Height of the original video.
+ * @param videoRange - The video color range ('SDR', 'PQ', 'HLG'). Defaults to 'SDR'.
+ * @returns A list of video profiles that the encoder should generate.
+ */
 export function filterActiveVideoProfiles(
    sourceWidth: number,
    sourceHeight: number,
@@ -78,6 +87,16 @@ export function filterActiveVideoProfiles(
    return active;
 }
 
+/**
+ * Calculates the exact pixel dimensions and bitrates for each video quality level.
+ * Ensures the video scales correctly without stretching or breaking the aspect ratio.
+ *
+ * @param profiles - The chosen video profiles to generate.
+ * @param sourceWidth - Width of the original video.
+ * @param sourceHeight - Height of the original video.
+ * @param complexityMultiplier - Bitrate adjustment factor based on how complex the video is.
+ * @returns A list of video settings ready for the ffmpeg encoder.
+ */
 export function computeVideoMetadata(
    profiles: VideoProfile[],
    sourceWidth: number,
@@ -151,6 +170,13 @@ export function computeVideoMetadata(
    });
 }
 
+/**
+ * Figures out which audio qualities to generate based on the original audio tracks.
+ * Handles keeping multiple languages and detecting high-quality surround sound (like Atmos).
+ *
+ * @param sourceAudioStreams - The audio streams found in the original video.
+ * @returns A list of audio settings ready for the ffmpeg encoder.
+ */
 export function computeAudioMetadata(
    sourceAudioStreams: AudioStreamInfo[] = [],
 ): AudioVariantMeta[] {
@@ -160,11 +186,8 @@ export function computeAudioMetadata(
       for (const profile of AUDIO_PROFILES) {
          if (profile.hardwareProfile && stream.channels < 2) continue;
 
-         const isAtmosSource =
-            stream.codec === 'eac3' ||
-            stream.codec === 'dca' ||
-            stream.codec === 'dts' ||
-            stream.codec === 'truehd';
+         const isAtmosCapableCodec = stream.codec === 'eac3' || stream.codec === 'truehd';
+         const isAtmosSource = isAtmosCapableCodec && stream.channels >= 6;
 
          if (profile.isAtmos && !isAtmosSource) continue;
 

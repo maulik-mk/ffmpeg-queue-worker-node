@@ -10,12 +10,13 @@ import type {
 const logger = pino({ name: 'PostgresVideoRepository' });
 
 /**
- * PostgreSQL adapter for persisting video state and metadata.
+ * Provides database connection pooling for PostgreSQL using `pg`.
  *
  * @remarks
- * - Manages its own connection pool. Must call `close()` during graceful shutdown to prevent connection leaks.
- * - Upserts are used for metadata (`ON CONFLICT (video_id) DO UPDATE`) to safely support job retries (idempotency).
- * - `updateStatus` serves as a sanity check: it intentionally throws if the video ID vanishes mid-process.
+ * - Enforces minimum timeout definitions (`idleTimeoutMillis`, `connectionTimeoutMillis`) to
+ *   prevent zombie DB locks if pg/Azure networks lag.
+ * - Resolves race conditions across distributed workers by utilizing `ON CONFLICT ... DO UPDATE` upserts.
+ * - Verifies row existence before state progression transitions to prevent missing target errors.
  */
 export class PostgresVideoRepository implements VideoRepository {
    private readonly pool: pg.Pool;

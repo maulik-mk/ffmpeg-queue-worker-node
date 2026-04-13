@@ -6,12 +6,12 @@ import type { JobData, ProcessVideoUseCase } from '../../domain/job.interface.js
 const logger = pino({ name: 'QueueWorker' });
 
 /**
- * BullMQ consumer that binds the Redis queue to the `ProcessVideo` domain logic.
+ * Subscribes to the Redis BullMQ stream for un-processed video conversions.
  *
  * @remarks
- * - Maps domain progress callbacks directly to BullMQ `job.updateProgress`.
- * - Relies on Redis lock durations (`config.JOB_LOCK_DURATION_MS`) to detect computationally locked/crashed workers.
- * - Does not throw on failure; relies on BullMQ's internal retry mechanism and `.on('failed')` listeners.
+ * - Enforces a static `{ lockDuration: config.JOB_LOCK_DURATION_MS }` interval to detect zombie encoding
+ *   pods and restore crashed jobs to `active` arrays automatically per BullMQ retry strategies.
+ * - Maps `ProcessVideo.execute()` percentage returns dynamically to `job.updateProgress()` avoiding blocking main event loop.
  */
 export class VideoWorker {
    private readonly worker: Worker<JobData>;

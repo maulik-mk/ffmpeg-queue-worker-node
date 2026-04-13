@@ -82,6 +82,14 @@ function getPairedAudioNames(
    return [getGroupId(stereoName), ...hardware];
 }
 
+/**
+ * Iterates over generated HLS `.m3u8` manifests to calculate true byte-range bitrates.
+ *
+ * - Required because ffmpeg `-b:v` and `-maxrate` flags only suggest target constraints.
+ * - Parses `#EXTINF` durations alongside discrete `.m4s` segment `stat.size` bytes to compute
+ *   the exact `BANDWIDTH` and `AVERAGE-BANDWIDTH` required by Apple's HLS Authoring Spec (v11).
+ * - Exact bandwidth values prevent player stall events caused by incorrect CDN buffering predictions.
+ */
 async function getBandwidthForDir(dirPath: string): Promise<{ peak: number; avg: number }> {
    try {
       const manifestPath = path.join(dirPath, HLS_CONSTANTS.VARIANT_PLAYLIST_NAME);
@@ -127,6 +135,16 @@ async function getBandwidthForDir(dirPath: string): Promise<{ peak: number; avg:
    }
 }
 
+/**
+ * Compiles the `master.m3u8` variant playlist index per RFC 8216.
+ *
+ * - Maps `CODECS` strings explicitly (e.g. `avc1.640028`, `hvc1.2.4.L153.B0`, `dvh1.08.01`) required for
+ *   hardware decoder instantiation on iOS, Safari, and Android.
+ * - Enforces `#EXT-X-VERSION:7` to support `#EXT-X-INDEPENDENT-SEGMENTS` declarations, permitting
+ *   AVPlayer to parse random-access points locally without inspecting fragmented MP4 headers.
+ * - Generates secondary `STABLE-RENDITION-ID` properties for deterministic CDN caching of specific
+ *   language+codec groups.
+ */
 export async function writeMasterPlaylist(
    outputDir: string,
    videoVariants: VideoVariantMeta[],
@@ -210,7 +228,8 @@ export async function writeMasterPlaylist(
       const trueVideoPeak = videoBw.peak > 0 ? videoBw.peak : v.maxrate;
 
       const isDovi = v.videoCodecTag.startsWith('dv');
-      const actualVideoRange = isDovi || v.profile === 'main10' ? 'PQ' : 'SDR';
+      const isHdrContent = v.videoRange === 'PQ' || v.videoRange === 'HLG';
+      const actualVideoRange = isDovi || isHdrContent ? 'PQ' : 'SDR';
       const relativeUri = `../${v.relativeUrl}/${HLS_CONSTANTS.VARIANT_PLAYLIST_NAME}`;
       const fpsInfo = getBroadcastFrameRate(sourceFrameRate);
       const frameRateString = fpsInfo ? fpsInfo.aFormat : (v.frameRate ?? 30).toFixed(3);
@@ -271,8 +290,7 @@ export async function writeMasterPlaylist(
 
          const maxDim = Math.max(v.actualWidth, v.actualHeight);
          const isHighDef = maxDim >= 1280;
-         const isUltraHighDef =
-            maxDim >= 2560 || v.profile === 'main10' || v.videoCodecTag.startsWith('dvh1');
+         const isUltraHighDef = maxDim >= 2560 || isDovi || isHdrContent;
 
          let hdcpLevel = 'NONE';
          if (isUltraHighDef) hdcpLevel = 'TYPE-1';

@@ -10,12 +10,13 @@ import { HLS_CONSTANTS } from '../ffmpeg/constants.js';
 const logger = pino({ name: 'AzureStorage' });
 
 /**
- * Azure Blob Storage adapter for uploading generated HLS playlists and segments.
+ * Recursively publishes locally-encoded HLS structures to an Azure Blob Storage container.
  *
  * @remarks
- * - Recursively scans the local output directory and mirrors the final structure to the Blob container.
- * - Automatically infers and injects correct `Content-Type` headers (`application/vnd.apple.mpegurl` or `video/mp4`).
- * - Security note: Uses `DefaultAzureCredential` in production (Managed Identity), falling back to connection strings locally.
+ * - Enforces specific `application/vnd.apple.mpegurl` headers for `*.m3u8` to prevent strict
+ *   player clients (ex: hls.js) from failing MIME-type checks during playback.
+ * - Assumes Managed Identities via DefaultAzureCredential to obtain short-lived Entra ID tokens in
+ *   AKS production deployments, preventing hardcoded connection string leaks.
  */
 export class AzureStorageService {
    private readonly blobServiceClient: BlobServiceClient;
@@ -31,7 +32,11 @@ export class AzureStorageService {
          }
          this.blobServiceClient = new BlobServiceClient(
             config.AZURE_STORAGE_ACCOUNT_URL,
-            new DefaultAzureCredential(),
+            new DefaultAzureCredential(
+               config.AZURE_MANAGED_IDENTITY_CLIENT_ID
+                  ? { managedIdentityClientId: config.AZURE_MANAGED_IDENTITY_CLIENT_ID }
+                  : undefined,
+            ),
          );
          logger.info('Azure Storage authenticated via Managed Identity');
       } else {
